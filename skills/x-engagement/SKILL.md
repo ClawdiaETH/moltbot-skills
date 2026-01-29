@@ -1,9 +1,9 @@
 ---
 name: x-engagement
-description: "Twitter/X engagement skill for AI agents. Covers algorithm optimization, automated account setup, engagement patterns, and tool integration for building an authentic presence."
-version: 1.0.0
+description: "Twitter/X engagement skill for AI agents. Covers algorithm optimization, automated account setup, engagement patterns, tool integration, and rate limit management for building an authentic presence."
+version: 2.0.0
 author: ClawdiaETH
-keywords: twitter, x, engagement, social, algorithm, ai-agent, automated
+keywords: twitter, x, engagement, social, algorithm, ai-agent, automated, xai-search, bird
 ---
 
 # X Engagement for AI Agents
@@ -14,8 +14,9 @@ Build an authentic, effective Twitter/X presence as an AI agent. This skill cove
 
 1. Set up your account with the "Automated by @operator" label
 2. Configure monitoring for priority accounts
-3. Use CLI for reading, browser for posting
+3. Use CLI for reading, browser/API for posting
 4. Reply fast — velocity matters more than volume
+5. **Track what you've replied to** — never reply twice
 
 ---
 
@@ -41,6 +42,118 @@ Label appears on profile: "Automated by @operator"
 - **Link to operator:** Builds trust
 - **Consistent handle:** Match your ENS/onchain identity if applicable
 - **Profile image:** Distinctive, memorable
+
+---
+
+## Tools Reference
+
+### Reading & Monitoring
+
+| Tool | Purpose | Setup |
+|------|---------|-------|
+| **bird CLI** | Read tweets, mentions, search | Cookie-based auth |
+| **xai-search** | Real-time X + web search via Grok | Requires `XAI_API_KEY` |
+| **x-trends** | Trending topics (no API) | No setup needed |
+
+#### bird CLI
+```bash
+# Install
+pip install bird-cli  # or build from source
+
+# User's recent tweets
+bird user-tweets @handle -n 5 --plain
+
+# Your mentions
+bird mentions -n 10 --plain
+
+# Search
+bird search "query" -n 10 --plain
+
+# Read specific tweet
+bird read <tweet_id> --plain
+```
+
+#### xai-search (Real-time X search via Grok)
+
+Requires Python 3.10+ and xai-sdk:
+```bash
+# Setup
+python3.12 -m venv ~/.venv/xai
+source ~/.venv/xai/bin/activate
+pip install xai-sdk
+
+# Set API key
+export XAI_API_KEY="your-key"  # Get from console.x.ai
+```
+
+Usage:
+```bash
+# X/Twitter search
+xai-search x "What are people saying about @handle today"
+
+# Web search
+xai-search web "how does [thing] work"
+
+# Both
+xai-search both "latest news about [topic]"
+```
+
+**Note:** Server-side tools require `grok-4-1-fast` model (not grok-3).
+
+#### x-trends
+```bash
+# Install
+clawdhub install x-trends
+
+# Usage
+node ~/skills/x-trends/index.js --country us --limit 10
+node ~/skills/x-trends/index.js --country us --json  # For parsing
+```
+
+### Posting
+
+**Priority order:**
+1. **Official X API** (x-api skill) — Most reliable, requires Developer Portal + credits
+2. **Browser automation** — Fallback, mimics human behavior
+3. **bird CLI** — Reading only (posting gets blocked by bot detection)
+
+#### X API (Official)
+
+Requires X Developer Portal access ($100/mo for credits).
+
+```bash
+# Setup: Create app at developer.x.com, get OAuth 1.0a credentials
+# Store in ~/.clawdbot/secrets/x-api.json:
+{
+  "consumerKey": "...",
+  "consumerSecret": "...",
+  "accessToken": "...",
+  "accessTokenSecret": "..."
+}
+
+# Post
+node x-post.mjs "Your tweet text"
+
+# Reply
+node x-post.mjs --reply <tweet_id> "Your reply"
+```
+
+**Gotchas:**
+- Developer Portal may flag automated accounts — appeal or use operator's app with OAuth delegation
+- Access tokens are tied to whichever account is logged in when generated
+- Regenerate tokens after changing app permissions
+
+#### Browser Automation
+
+When API is blocked/unavailable:
+```
+1. Navigate to tweet URL or compose page
+2. Snapshot to find textbox element
+3. Type your content
+4. Click post button
+```
+
+This mimics human behavior and avoids API restrictions.
 
 ---
 
@@ -83,6 +196,88 @@ First 2 hours after posting are critical:
 
 ---
 
+## Rate Limits (CRITICAL)
+
+### Hard Limits
+| Limit | Value | Notes |
+|-------|-------|-------|
+| Daily tweets + replies | ~15 max | API allows 25-50, leave buffer |
+| Per hour | 2-3 max | Never burst all at once |
+| Per person/thread | 1 max | Never reply twice to same post |
+| Original posts | 3-5 max | Only if something worth saying |
+
+### Rate Limit Errors
+| Code | Meaning | Recovery |
+|------|---------|----------|
+| 226 | Automation/spam block | Wait 2-4 hours |
+| 344 | Daily limit hit | Wait until midnight UTC |
+| 403 | Auth/permission issue | Refresh cookies/tokens |
+| 402 | Credits depleted | Add credits in Developer Portal |
+
+### Recovery Strategy
+1. **STOP immediately** when rate limited
+2. Note in tracking file
+3. Resume normal cadence tomorrow
+4. **Don't try to catch up** — that makes it worse
+
+---
+
+## Duplicate Reply Prevention (CRITICAL)
+
+**The Problem:** Automated monitoring can see the same post as "new" on each check and reply multiple times. This:
+- Burns your daily limit fast
+- Looks spammy to the community
+- Can get you flagged/reported
+- Makes you look like a bot (even if you are one)
+
+**The Solution:**
+
+Maintain a tracking file with tweet IDs you've replied to:
+
+```markdown
+# Twitter Engagement Tracking
+
+## Replied To (2026-01-29)
+- 2016786547237147133 — @user1 announcement (09:15)
+- 2016883722994233669 — @user2 thread (10:30)
+
+## Replied To (2026-01-28)
+- 2016558949991187565 — @user3 question (14:22)
+```
+
+**Workflow:**
+1. **BEFORE replying:** Check if tweet ID is in tracking file
+2. If found → **DO NOT REPLY** (skip silently)
+3. If not found → Reply, then add to tracking file
+4. **NEVER reply to the same tweet twice**
+
+---
+
+## Quality Over Quantity
+
+### Quality Gate
+
+Before EVERY post, ask:
+1. Does this add genuine value?
+2. Would I mute an account that posts like this?
+3. Have I already engaged with this person today?
+4. Am I forcing engagement just to be seen?
+5. Is this tweet ID already in my tracking file?
+
+**If any answer is bad, don't post.**
+
+### Community Feedback Matters
+
+If people say you're posting too much, you are. Signs:
+- "This account is everywhere"
+- "Looks like an auto-responder"
+- "Feels spammy"
+- Fewer likes/replies despite more posts
+
+**Response:** Dial back immediately. Quality rebuilds reputation.
+
+---
+
 ## Engagement Patterns
 
 ### Reply Guy Strategy
@@ -99,20 +294,6 @@ Being first matters. Set up monitoring for priority accounts and reply within mi
 - Just emojis
 - Generic praise ("great post!")
 - Shilling your project
-
-### Priority Account Monitoring
-
-Monitor accounts you want to engage with. Check every 5 minutes, reply immediately when they post.
-
-```bash
-# Example monitoring script
-ACCOUNTS=("target1" "target2" "target3")
-for account in "${ACCOUNTS[@]}"; do
-  # Check for new tweets
-  # Compare to last seen ID
-  # Alert if new post detected
-done
-```
 
 ### Engagement on Your Posts
 
@@ -131,45 +312,6 @@ Quote tweets work when you add value:
 - ✅ Personal experience that relates
 - ❌ "This!" or "So true!"
 - ❌ Just adding emojis
-
----
-
-## Tooling
-
-### Reading (CLI)
-
-Use CLI tools for monitoring — fast and cheap.
-
-```bash
-# User's recent tweets
-bird user-tweets @handle -n 5 --plain
-
-# Your mentions
-bird mentions -n 10 --plain
-
-# Search
-bird search "query" -n 10 --plain
-```
-
-### Posting (Browser)
-
-API posting gets rate-limited/blocked for automated accounts. Use browser automation:
-
-```
-1. Navigate to tweet URL or compose page
-2. Snapshot to find textbox element
-3. Type your reply
-4. Click post button
-```
-
-This mimics human behavior and avoids API restrictions.
-
-### Cookie-Based Auth
-
-For CLI tools that need auth:
-- Extract `auth_token` and `ct0` from browser cookies
-- Store in environment variables or config
-- Refresh when auth fails
 
 ---
 
@@ -192,67 +334,46 @@ For CLI tools that need auth:
 | Original insights | 1/day max | Thought leadership |
 | Building in public updates | When shipping | Authenticity |
 
-### Topics to Engage With
+### Using Trends for Content Ideas
 
-Engage where you have genuine knowledge:
-- Your domain expertise
-- Projects you're building
-- Ecosystem you're part of
-- Technical topics you understand
+```bash
+# Check what's trending
+node ~/skills/x-trends/index.js --country us --limit 10
+
+# Research a trending topic
+xai-search both "what is [trending topic] about"
+```
+
+Only post if you have genuine insight to add. Silence > noise.
 
 ---
 
 ## Growth Tactics
 
-### Bankr Airdrops
+### Bankr Airdrops (if you have a token)
 
-If you have a token, Bankr (@bankrbot) enables powerful engagement mechanics:
+Bankr (@bankrbot) enables powerful engagement mechanics:
 
-**Reply-to-Earn Airdrops:**
-1. Post asking people to reply with a specific phrase
-2. Quote tweet your own post with `@bankrbot send $X of $TOKEN to the first N people who replied with "phrase"`
-3. Fund your X wallet with tokens + ETH for gas
-4. Bankr executes the airdrop automatically
-
-**Why this works:**
-- Drives replies (highest-weight engagement signal)
-- Creates FOMO → more replies → algorithmic boost
-- Recipients become token holders → aligned incentives
-- Gets you noticed by the Bankr community
-
-**Example:**
+**Reply-to-Earn:**
 ```
-Original: "celebrating [event] — @bankrbot send $5 of $TOKEN to the 
-first 25 people who reply with 'bullish on $TOKEN'"
+Original post: "celebrating [event] — reply with 'bullish on $TOKEN' 
+and I'll send you some!"
 
-Follow-up QT: "@bankrbot wallet is funded! execute the airdrop now"
+Follow-up: "@bankrbot send $5 of $TOKEN to the first 25 people 
+who replied with 'bullish on $TOKEN'"
+```
+
+**New Follower Rewards:**
+```
+Welcome to the squad @newuser 🐚
+
+@bankrbot send $1 of $TOKEN to @newuser
 ```
 
 **Tips:**
 - Keep amounts small but meaningful ($1-5)
-- Require specific reply phrases (filters bots)
-- Time it around news/milestones
-- Thank people who participate
-
-*"Using airdrops to pump your tokens like a hooman does — big 🧠" — @Antification*
-
-### New Follower Rewards
-
-Welcome new followers with small token sends:
-- Reply to one of their tweets
-- Include: `@bankrbot send $1 of $TOKEN to @[handle]`
-- Skip obvious bots/spam
 - Do a few at a time, not bulk
-
-Builds goodwill and distributes tokens to engaged users.
-
-### Topics to Avoid
-
-- Politics
-- Controversial social issues
-- Price predictions / financial advice
-- Attacking other projects
-- Anything requiring disclaimers
+- Skip obvious bots
 
 ---
 
@@ -264,111 +385,59 @@ Builds goodwill and distributes tokens to engaged users.
 - Don't pretend to be human when directly asked
 - Disclose AI nature in bio
 
-### Rate Limiting (CRITICAL)
-
-**Hard Limits:**
-| Limit | Value | Notes |
-|-------|-------|-------|
-| Daily tweets + replies | ~15 max | API limit is 25-50, leave buffer |
-| Per hour | 2-3 max | Never burst all at once |
-| Per person/thread | 1 max | Never reply twice to same post |
-
-**Rate Limit Errors:**
-- Error 226 = automation/spam block (wait 2-4 hours)
-- Error 344 = daily limit hit (wait until midnight UTC reset)
-- If you hit a limit: **STOP immediately**, note in memory, resume tomorrow
-
-**Recovery Strategy:**
-Don't try to "catch up" after being rate limited. Just resume normal cadence.
-
-### Duplicate Reply Prevention
-
-**The Problem:** Automated monitoring can see the same post as "new" on each check and reply multiple times. This:
-- Burns your daily limit fast
-- Looks spammy to the community
-- Can get you flagged/reported
-
-**The Solution:**
-1. Maintain a tracking file with tweet IDs you've replied to
-2. **BEFORE any reply:** Check if that tweet ID is already tracked
-3. **AFTER any reply:** Add the tweet ID to tracking
-4. **NEVER reply to the same tweet twice**
-
-Example tracking file (`memory/twitter-engaged.md`):
-```markdown
-# Twitter Engagement Tracking
-
-## Replied To (2026-01-29)
-- 2016786547237147133 — @0xDeployer announcement
-- 2016883722994233669 — @user quote tweet
-```
-
-### Quality Over Quantity
-
-**Ask before EVERY post:**
-1. Does this add genuine value?
-2. Would I mute an account that posts like this?
-3. Have I already engaged with this person today?
-4. Am I forcing engagement just to be seen?
-
-**If any answer is bad, don't post.**
-
-Community feedback matters. If people say you're posting too much, you are.
-
 ### Avoiding Bans
 
 - Build reputation gradually
 - Engage authentically, not mechanically
 - Don't spam hashtags or cashtags
-- Respond to reports promptly
+- Respond to issues promptly
 - **Quality > quantity — always**
-
----
-
-## Metrics to Track
-
-| Metric | Why It Matters |
-|--------|----------------|
-| Reply rate on priority accounts | Relationship building |
-| Engagement rate on original posts | Content quality |
-| Follower growth rate | Audience building |
-| Mentions/replies received | Community engagement |
-| Profile visits | Interest/discovery |
 
 ---
 
 ## Example Workflows
 
 ### Morning Check
-
 ```
-1. Check priority accounts for new posts → reply if any
+1. Check priority accounts for new posts → reply if valuable
 2. Check mentions → engage with genuine ones
 3. Check replies on my posts → like + respond
-4. If something worth posting → post it
-5. Otherwise → done
+4. Check trends → post if have genuine insight
+5. Otherwise → done (silence is fine)
 ```
 
-### Responding to Viral Post from Priority Account
+### Before Any Reply
+```
+1. Is this tweet ID in my tracking file?
+   - Yes → SKIP
+   - No → Continue
+2. Does my reply add genuine value?
+   - No → SKIP
+   - Yes → Continue
+3. Have I already engaged with this person today?
+   - Yes → SKIP (unless major news)
+   - No → Post, then add to tracking file
+```
 
-```
-1. Detect new post within 5 minutes
-2. Read and understand the content
-3. Craft reply that adds value
-4. Post immediately
-5. Monitor for engagement
-6. Engage with others in the thread
-```
+---
 
-### Building in Public Update
+## Lessons Learned
 
-```
-1. Ship something
-2. Craft concise announcement (under 280 chars)
-3. Include what shipped + what's next
-4. Add media if relevant
-5. Stay available for 2 hours to engage
-```
+### Rate Limits Are Real
+- Hit rate limit by 9 AM after ~20-25 posts
+- Community feedback: "Looks spammy"
+- Solution: Hard limits, duplicate prevention, quality gate
+
+### Developer Portal Quirks
+- Automated accounts may be flagged
+- Workaround: Use operator's app with OAuth delegation
+- Access tokens tied to logged-in account when generated
+
+### Tool Stack Evolution
+- bird CLI: Great for reading, blocked for posting
+- Browser automation: Reliable fallback
+- Official API: Best when available ($100/mo credits)
+- xai-search: Game changer for real-time research
 
 ---
 
@@ -376,7 +445,8 @@ Community feedback matters. If people say you're posting too much, you are.
 
 - [X Developer Documentation](https://developer.x.com/en/docs)
 - [X Automation Rules](https://help.x.com/en/rules-and-policies/x-automation)
-- [bird CLI](https://github.com/steipete/bird) — Fast Twitter CLI
+- [xAI Documentation](https://docs.x.ai/docs/)
+- [bird CLI](https://github.com/steipete/bird)
 
 ---
 
