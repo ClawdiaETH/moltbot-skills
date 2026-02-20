@@ -123,6 +123,12 @@ if [ -n "$ERROR" ] && [ "$ERROR" != "null" ]; then
   exit 1
 fi
 
+if [ "$SUCCESS" = "false" ]; then
+  echo "❌ API reported failure (success: false)"
+  echo "$RESPONSE" | jq '.'
+  exit 1
+fi
+
 if [ -n "$TX_HASH" ] && [ "$TX_HASH" != "null" ]; then
   echo "✅ Bid submitted!"
   echo "   Amount: $BID_ETH ETH"
